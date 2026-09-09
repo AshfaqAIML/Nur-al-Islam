@@ -1,0 +1,479 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Hanafi Aqeedah, Fiqh & Misconception Research Platform
+// Prisma schema (SQLite) — documented equivalent of the PostgreSQL model
+// required by the MASTER PROMPT. SQLite has no native enum/JSON types, so:
+//   • enums   → String fields with documented allowed values (see comments)
+//   • JSON    → String fields holding serialized JSON (parsed in lib/types.ts)
+// Foreign keys, indexes, and audit fields are preserved per the prompt.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String     @id @default(cuid())
+  email       String     @unique
+  name        String?
+  role        String     @default("USER")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  questions   Question[]
+  answers     Answer[]
+  reviews     Review[]
+}
+
+model Scholar {
+  id               String        @id @default(cuid())
+  slug             String        @unique
+  nameEn           String
+  nameAr           String?
+  nameUr           String?
+  title            String?
+  birthYear        String?
+  deathYear        String?
+  era              String?
+  madhhab          String?
+  aqeedahTradition String?
+  region           String?
+  languages        String?
+  biographyEn      String?
+  biographyUr      String?
+  biographyAr      String?
+  majorWorks       String? // JSON [{title, lang, note}]
+  classification   String        @default("CLASSICAL_HANAFI")
+  isHanafi         Boolean       @default(true)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  books            Book[]        @relation("BookAuthor")
+  fatwas           Fatwa[]
+  positions        Position[]
+  scholarlyViews   ScholarlyView[]
+}
+
+model Book {
+  id             String       @id @default(cuid())
+  slug           String       @unique
+  titleEn        String
+  titleAr        String?
+  titleUr        String?
+  altTitles      String?
+  authorId       String?
+  author         Scholar?     @relation("BookAuthor", fields: [authorId], references: [id])
+  era            String?
+  school         String?
+  subject        String?
+  language       String?
+  descriptionEn  String?
+  descriptionUr  String?
+  descriptionAr  String?
+  publisher      String?
+  edition        String?
+  volumes        Int          @default(1)
+  chapters       String? // JSON [string]
+  classification String       @default("CLASSICAL_HANAFI")
+  isHanafi       Boolean      @default(true)
+  ocrStatus      String       @default("NOT_STARTED")
+  verified       Boolean      @default(false)
+  coverColor     String       @default("emerald")
+  featured       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  fatwas         Fatwa[]
+  citations      Citation[]
+  pages          BookPage[]
+}
+
+model BookPage {
+  id            String  @id @default(cuid())
+  bookId        String
+  book          Book    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  volume        Int     @default(1)
+  pageNumber    Int
+  chapter       String?
+  ocrText       String?
+  ocrConfidence Float?
+  imageUrl      String?
+  verified      Boolean @default(false)
+  citations     Citation[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([bookId, volume, pageNumber])
+}
+
+model QuranVerse {
+  id            String     @id @default(cuid())
+  surah         Int
+  surahNameEn   String
+  surahNameAr   String
+  ayah          Int
+  arabic        String
+  translationEn String
+  translationUr String?
+  topicTags     String? // JSON [string]
+  citations     Citation[]
+
+  @@unique([surah, ayah])
+}
+
+model Hadith {
+  id              String     @id @default(cuid())
+  collection      String
+  book            String?
+  chapter         String?
+  number          String?
+  arabic          String?
+  translationEn   String
+  translationUr   String?
+  narrator        String?
+  chain           String?
+  grading         String     @default("UNRATED")
+  gradingDisputed Boolean    @default(false)
+  gradingNotes    String?
+  sourceEdition   String?
+  commentary      String?
+  topicTags       String? // JSON [string]
+  citations       Citation[]
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Fatwa {
+  id                 String  @id @default(cuid())
+  question           String
+  answer             String
+  scholarId          String?
+  scholar            Scholar? @relation(fields: [scholarId], references: [id])
+  bookId             String?
+  book               Book?    @relation(fields: [bookId], references: [id])
+  volume             String?
+  page               String?
+  language           String   @default("Urdu")
+  translationEn      String?
+  topic              String?
+  year               String?
+  verificationStatus String   @default("UNVERIFIED")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Category {
+  id            String     @id @default(cuid())
+  slug          String     @unique
+  nameEn        String
+  nameUr        String
+  nameAr        String
+  type          String
+  icon          String?
+  descriptionEn String?
+  descriptionUr String?
+  descriptionAr String?
+  order         Int        @default(0)
+  topics        Topic[]
+  questions     Question[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model QuestionCluster {
+  id           String     @id @default(cuid())
+  slug         String     @unique
+  titleEn      String
+  titleUr      String?
+  titleAr      String?
+  descriptionEn String?
+  order        Int        @default(0)
+  questions    Question[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+
+model Topic {
+  id          String          @id @default(cuid())
+  categoryId  String
+  category    Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  slug        String          @unique
+  titleEn     String
+  titleUr     String?
+  titleAr     String?
+  arabicTerm  String?
+  summaryEn   String?
+  summaryUr   String?
+  summaryAr   String?
+  isContested Boolean         @default(false)
+  order       Int             @default(0)
+  misconceptions Misconception[]
+  objections     Objection[]
+  comparisons    Comparison[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Misconception {
+  id                 String  @id @default(cuid())
+  slug               String  @unique
+  claim              String
+  claimUr            String?
+  claimAr            String?
+  sourceOfClaim      String?
+  verificationStatus String  @default("DISPUTED")
+  actualPosition     String?
+  primaryEvidence    String? // JSON [{ref, quote, translation}]
+  classicalEvidence  String? // JSON
+  laterEvidence      String? // JSON
+  counterargument    String?
+  scholarlyResponse  String?
+  disagreements      String?
+  conclusion         String?
+  topicId            String?
+  topic              Topic?  @relation(fields: [topicId], references: [id])
+  views              Int     @default(0)
+  featured           Boolean @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Objection {
+  id             String  @id @default(cuid())
+  question       String
+  answer         String
+  hanafiPosition String?
+  evidence       String? // JSON [{ref, quote, translation}]
+  disputed       String?
+  isAqeedah      Boolean @default(false)
+  topicId        String?
+  topic          Topic?  @relation(fields: [topicId], references: [id])
+  views          Int     @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Comparison {
+  id       String  @id @default(cuid())
+  issue    String
+  topicId  String?
+  topic    Topic?  @relation(fields: [topicId], references: [id])
+  hanafi   String?
+  shafii   String?
+  maliki   String?
+  hanbali  String?
+  other    String? // Ahl-e-Hadith/Salafi etc.
+  notes    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SearchLog {
+  id        String   @id @default(cuid())
+  query     String
+  results   Int      @default(0)
+  intent    String?
+  language  String   @default("EN")
+  surface   String   @default("search") // search | bank | claims | qa
+  createdAt DateTime @default(now())
+
+  @@index([query])
+  @@index([createdAt])
+}
+
+model QuestionSuggestion {
+  id          String   @id @default(cuid())
+  question    String
+  rationale   String?
+  categorySlug String?
+  subcategory String?
+  difficulty  String?
+  clusterSlug String?
+  source      String   @default("AI") // AI | SEARCH_LOG | EDITOR
+  status      String   @default("PENDING")
+  reviewedNote String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+
+
+model ClaimCheck {
+  id             String  @id @default(cuid())
+  claim          String
+  context        String?
+  classification String
+  explanation    String
+  evidence       String? // JSON [{title, ref, quote, translation, source}]
+  aiGenerated    Boolean @default(true)
+  status         String  @default("PUBLISHED")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Position {
+  id         String  @id @default(cuid())
+  kind       String  @default("POSITION")
+  statement  String
+  strength   String  @default("STRONG") // STRONG | PREFERRED | MINORITY | DISPUTED
+  school     String  @default("HANAFI")
+  scholarId  String?
+  scholar    Scholar? @relation(fields: [scholarId], references: [id])
+  evidence   String? // JSON
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model ScholarlyView {
+  id         String  @id @default(cuid())
+  scholarId  String
+  scholar    Scholar @relation(fields: [scholarId], references: [id], onDelete: Cascade)
+  issue      String
+  view       String
+  isMajority Boolean @default(false)
+  source     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Question {
+  id            String     @id @default(cuid())
+  text          String
+  textUr       String?
+  textAr       String?
+  language      String     @default("EN")
+  slug          String?    @unique
+  categoryId    String?
+  category      Category?  @relation(fields: [categoryId], references: [id])
+  subcategory   String?
+  questionType  String?
+  difficulty    String?
+  isCommon      Boolean    @default(false)
+  isMisconception Boolean  @default(false)
+  isDisputed    Boolean    @default(false)
+  isSensitive   Boolean    @default(false)
+  shortAnswer   String?
+  shortAnswerUr String?
+  shortAnswerAr String?
+  intent        String?
+  clusterId     String?
+  cluster       QuestionCluster? @relation(fields: [clusterId], references: [id])
+  clusterOrder  Int        @default(0)
+  canonicalId   String?
+  canonical     Question?  @relation("QuestionVariants", fields: [canonicalId], references: [id])
+  variants      Question[] @relation("QuestionVariants")
+  variantWordings String? // JSON [string] — alternate phrasings of the same question
+  relatedSlugs  String? // JSON [string]
+  context       String?
+  claim         String?
+  sourceRef     String?
+  attachmentUrl String?
+  status        String     @default("PENDING")
+  views         Int        @default(0)
+  featured      Boolean    @default(false)
+  userId        String?
+  user          User?      @relation(fields: [userId], references: [id])
+  answers       Answer[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([isCommon])
+  @@index([clusterId])
+}
+
+
+
+
+model Answer {
+  id                String     @id @default(cuid())
+  questionId        String
+  question          Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  directAnswer      String
+  detailedAnswer    String?
+  hanafiPosition    String?
+  aqeedahOrFiqh     String? // AQEEDAH | FIQH | BOTH | NEITHER
+  quranEvidence     String? // JSON [{surah, ayah, arabic, translation}]
+  hadithEvidence    String? // JSON [{collection, number, quote, translation, grading}]
+  classicalEvidence String? // JSON [{book, scholar, quote, translation}]
+  laterEvidence     String? // JSON
+  fatawaRazvia      String?
+  otherViews        String?
+  commonObjection   String?
+  scholarlyResponse String?
+  disputed          String?
+  misconceptionNote String?
+  practicalInfo     String?
+  sources           String? // JSON
+  answerUr          String? // JSON {detailedAnswer,hanafiPosition,otherViews,commonObjection,scholarlyResponse,disputed,practicalInfo}
+  answerAr          String? // JSON {same keys as answerUr}
+  status            String     @default("AI_ASSISTED")
+  revision          Int        @default(1)
+  aiGenerated       Boolean    @default(true)
+  helpfulUp         Int        @default(0) // reader feedback: found this answer useful
+  helpfulDown       Int        @default(0) // reader feedback: needs improvement / unclear
+  userId            String?
+  user              User?      @relation(fields: [userId], references: [id])
+  citations         Citation[]
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model Citation {
+  id          String      @id @default(cuid())
+  answerId    String?
+  answer      Answer?     @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  sourceType  String
+  quranVerseId String?
+  quranVerse  QuranVerse? @relation(fields: [quranVerseId], references: [id])
+  hadithId    String?
+  hadith      Hadith?     @relation(fields: [hadithId], references: [id])
+  bookId      String?
+  book        Book?       @relation(fields: [bookId], references: [id])
+  bookPageId  String?
+  bookPage    BookPage?   @relation(fields: [bookPageId], references: [id])
+  volume      String?
+  page        String?
+  chapter     String?
+  quote       String?
+  translation String?
+  verificationStatus String @default("UNVERIFIED")
+  ocrConfidence Float?
+  humanVerified Boolean   @default(false)
+  permalink   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  type       String   @default("EDITORIAL")
+  action     String
+  comment    String?
+  reviewerId String?
+  reviewer   User?    @relation(fields: [reviewerId], references: [id])
+  targetType String // ANSWER | MISCONCEPTION | ARTICLE | CLAIM
+  targetId   String
+  createdAt  DateTime @default(now())
+}
+
+model SearchDocument {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  title      String
+  titleUr    String?
+  titleAr    String?
+  body       String
+  bodyUr     String?
+  bodyAr     String?
+  language   String   @default("EN")
+  route      String
+  weight     Float    @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([entityType])
+}

@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams;
+  const id = sp.get("id");
+  const q = sp.get("q");
+  const aqeedah = sp.get("aqeedah");
+
+  if (id) {
+    const objection = await db.objection.findUnique({
+      where: { id },
+      include: { topic: { select: { slug: true, titleEn: true, titleUr: true, titleAr: true } } },
+    });
+    if (!objection) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    await db.objection.update({ where: { id }, data: { views: { increment: 1 } } });
+    // Related research trail: same-topic objections + misconceptions + madhhab comparisons.
+    const [relObjections, relMisconceptions, relComparisons] = await Promise.all([
+      objection.topicId
+        ? db.objection.findMany({
+            where: { topicId: objection.topicId, id: { not: objection.id } },
+            take: 4,
+            orderBy: { views: "desc" },
+            select: { id: true, question: true, isAqeedah: true, views: true },
+          })
+        : Promise.resolve([]),
+      objection.topicId
+        ? db.misconception.findMany({
+            where: { topicId: objection.topicId },
+            take: 4,
+            orderBy: { views: "desc" },
+            select: { id: true, slug: true, claim: true, verificationStatus: true, views: true },
+          })
+        : Promise.resolve([]),
+      objection.topicId
+        ? db.comparison.findMany({
+            where: { topicId: objection.topicId },
+            take: 3,
+            orderBy: { createdAt: "asc" },
+            select: { id: true, issue: true },
+          })
+        : Promise.resolve([]),
+    ]);
+    return NextResponse.json({ objection, related: { objections: relObjections, misconceptions: relMisconceptions, comparisons: relComparisons } });
+  }
+
+  const where: Record<string, unknown> = {};
+  if (q) where.question = { contains: q };
+  if (aqeedah === "true") where.isAqeedah = true;
+  if (aqeedah === "false") where.isAqeedah = false;
+
+  const objections = await db.objection.findMany({
+    where,
+    orderBy: { views: "desc" },
+    include: { topic: { select: { slug: true, titleEn: true } } },
+  });
+  return NextResponse.json({ objections });
+}
