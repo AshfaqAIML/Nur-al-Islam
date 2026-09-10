@@ -82,11 +82,16 @@ model Book {
   verified       Boolean      @default(false)
   coverColor     String       @default("emerald")
   featured       Boolean      @default(false)
+  sourceRef      String?
+  // ── Phase 8: sha256 of the stored original (duplicate detection).
+  // NULL for pre-upload books; checked in app code, not a DB unique.
+  sourceChecksum String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   fatwas         Fatwa[]
   citations      Citation[]
   pages          BookPage[]
+  jobs           BookProcessingJob[]
 }
 
 model BookPage {
@@ -100,11 +105,60 @@ model BookPage {
   ocrConfidence Float?
   imageUrl      String?
   verified      Boolean @default(false)
+  // ── Phase 2: page-level processing state (resumable pipeline) ──
+  // status: PENDING | QUEUED | OCR_DONE | INDEXED | NEEDS_REVIEW | FAILED
+  status        String  @default("PENDING")
+  language      String?
+  engine        String?
+  checksum      String?
+  error         String?
+  attempts      Int     @default(0)
+  // ── Phase 4: text states — ocrText is RAW and never overwritten;
+  // normalizedText is the search-safe variant; verifiedText holds the
+  // human-approved correction (NULL until reviewed).
+  normalizedText String?
+  verifiedText   String?
+  // Phase 4: verification signals JSON { ocrConfidence, lowConfRatio,
+  // unicodeAnomalies, lexiconScore, layoutFlags, structuralFlags,
+  // engineDisagreement, verdict } - set by the worker, never edited by hand.
+  signals        String?
+  // ── Phase 13: secondary OCR capture (review-routed dual capture) ──
+  // Same shape as primary, stored separately, never merged, never indexed.
+  // NULL = single-capture legacy rows or secondary not (yet) run.
+  ocrTextSecondary      String?
+  engineSecondary       String?
+  ocrConfidenceSecondary Float?
   citations     Citation[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@unique([bookId, volume, pageNumber])
+}
+
+model BookProcessingJob {
+  id             String    @id @default(cuid())
+  bookId         String
+  book           Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  // status: QUEUED | ANALYZING | EXTRACTING | RENDERING | OCR | STRUCTURING |
+  //         VERIFYING | CHUNKING | INDEXING | COMPLETED | COMPLETED_WITH_WARNINGS |
+  //         REQUIRES_REVIEW | FAILED | CANCELLED
+  status         String    @default("QUEUED")
+  // stage: free-form pipeline step label, mirrors status while active
+  stage          String    @default("QUEUED")
+  progress       Float     @default(0)
+  totalPages     Int       @default(0)
+  processedPages Int       @default(0)
+  failedPages    Int       @default(0)
+  reviewPages    Int       @default(0)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  error          String?
+  metadata       String? // JSON { sourceRef, requestedBy, notes }
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([bookId])
+  @@index([status])
 }
 
 model QuranVerse {
@@ -472,8 +526,24 @@ model SearchDocument {
   language   String   @default("EN")
   route      String
   weight     Float    @default(1)
+  // ── Phase 4: book-chunk provenance + search/display separation ──
+  // body = display text (verbatim). bodySearch = normalized index text
+  // (Urdu/Arabic folded; see src/lib/search-normalize.ts). meta = JSON
+  // { volume, page, chapter, section, surah, ayahStart, ayahEnd, juz,
+  //   ruku, masala, jobId, engine, model, checksum, textState, signals }.
+  // Unknown metadata stays NULL/absent — never invented.
+  bodySearch String?
+  bookId     String?
+  // ── Phase 5: queryable jild/page for metadata filtering (meta JSON
+  // stays the full provenance record; these two columns are the indexed
+  // filter keys). NULL for non-book documents.
+  volume     Int?
+  pageNumber Int?
+  meta       String? // JSON provenance + domain metadata + review signals
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  @@unique([entityType, entityId])
   @@index([entityType])
+  @@index([bookId])
 }

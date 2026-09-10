@@ -54,3 +54,8 @@ server.log
 /skills/tool-results/
 skills/
 tool-results/
+
+# Phase 2: book processing — original PDFs/scans live here, never committed.
+# Referenced by Book.sourceRef / job metadata.sourceRef; originals are preserved,
+# pipeline works on derived page rows (BookPage), never mutates the originals.
+/storage/
