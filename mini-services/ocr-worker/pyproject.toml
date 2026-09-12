@@ -1,0 +1,24 @@
+[project]
+name = "nur-ocr-worker"
+version = "0.1.0"
+description = "Server-side book processing worker for Nur al-Usul (Phase 3)"
+requires-python = ">=3.10"
+dependencies = [
+  "PyMuPDF>=1.24",
+  "pypdf>=5",
+  "Pillow>=10",
+  "opencv-python-headless>=4.8",
+  "numpy>=1.26",
+  "requests>=2.31",
+  "arabic-reshaper>=3.0",
+  "python-bidi>=0.5",
+]
+
+[project.optional-dependencies]
+ocr-easyocr = ["easyocr>=1.7"]
+ocr-paddle = ["paddleocr>=2.7", "paddlepaddle>=2.6"]
+ocr-tesseract = ["pytesseract>=0.3"]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
