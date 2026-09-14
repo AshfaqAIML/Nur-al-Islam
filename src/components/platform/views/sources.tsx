@@ -11,6 +11,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { usePlatform, useT } from "@/lib/store";
 import { apiGet, Book, Fatwa, Scholar } from "@/lib/api";
+import { parseSourcesParam } from "@/lib/book-api";
+import { BookPages } from "@/components/platform/book-pages";
 import { SourceClassBadge, VerificationBadge, OcrStatusTag } from "@/components/platform/badges";
 import { ScholarlyCard, UrduText } from "@/components/platform/text";
 import { coverClass } from "@/components/platform/views/home";
@@ -20,7 +22,6 @@ import {
   CitationBlock,
   EmptyState,
   GeometricDivider,
-  ManuscriptPanel,
 } from "@/components/platform/architectural";
 import { cn } from "@/lib/utils";
 
@@ -35,19 +36,21 @@ export function SourcesView({ param }: { param?: string | null }) {
   const [book, setBook] = useState<Book | null>(null);
   const [scholar, setScholar] = useState<Scholar | null>(null);
   const [citationCopied, setCitationCopied] = useState(false);
+  // Phase 7: page deep-link (book/{slug}/{page}) — survives refresh/share.
+  const linkedPage = parseSourcesParam(param)?.page ?? null;
 
-  // Deep links: book/slug or scholar/slug
+  // Deep links: book/slug[/page] or scholar/slug (page deep-link added Phase 7)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       if (!param) { if (!cancelled) { setBook(null); setScholar(null); } return; }
-      const [kind, slug] = param.split("/");
-      if (kind === "book" && slug) {
-        await apiGet<{ book: Book }>(`/api/books?slug=${encodeURIComponent(slug)}`).then((d) => { if (!cancelled) setBook(d.book); }).catch(() => { if (!cancelled) setBook(null); });
-      } else if (kind === "scholar" && slug) {
-        await apiGet<{ scholar: Scholar }>(`/api/scholars?slug=${encodeURIComponent(slug)}`).then((d) => { if (!cancelled) setScholar(d.scholar); }).catch(() => { if (!cancelled) setScholar(null); });
-      } else if (kind === "fatwa") {
-        if (!cancelled) setTab("fatwas");
+      if (param === "fatwa" || param.startsWith("fatwa/")) { if (!cancelled) setTab("fatwas"); return; }
+      const parsed = parseSourcesParam(param);
+      if (!parsed) { if (!cancelled) { setBook(null); setScholar(null); } return; }
+      if (parsed.kind === "book") {
+        await apiGet<{ book: Book }>(`/api/books?slug=${encodeURIComponent(parsed.slug)}`).then((d) => { if (!cancelled) setBook(d.book); }).catch(() => { if (!cancelled) setBook(null); });
+      } else if (parsed.kind === "scholar") {
+        await apiGet<{ scholar: Scholar }>(`/api/scholars?slug=${encodeURIComponent(parsed.slug)}`).then((d) => { if (!cancelled) setScholar(d.scholar); }).catch(() => { if (!cancelled) setScholar(null); });
       }
     })();
     return () => { cancelled = true; };
@@ -238,21 +241,7 @@ export function SourcesView({ param }: { param?: string | null }) {
                   </TabsContent>
 
                   <TabsContent value="pages" className="mt-3">
-                    <ManuscriptPanel>
-                      <div className="p-4">
-                        <p className="font-scholarly text-sm font-semibold">Page-level manuscript environment</p>
-                        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                          Once scanned pages are ingested for this work, the original page image, extracted Arabic text,
-                          and translation are presented side by side here — the way a researcher reads at a manuscript desk:
-                          navigation on one side, folio on the other.
-                        </p>
-                        <div className="mt-3 grid grid-cols-[1fr_2fr] gap-2 opacity-60" aria-hidden>
-                          <div className="h-20 rounded border border-dashed" />
-                          <div className="h-20 rounded border border-dashed pattern-weave" />
-                        </div>
-                        <p className="mt-2 text-[11px] text-muted-foreground">OCR pipeline status: <strong>{book.ocrStatus}</strong></p>
-                      </div>
-                    </ManuscriptPanel>
+                    <BookPages slug={book.slug} initialPage={linkedPage} />
                   </TabsContent>
 
                   <TabsContent value="citation" className="mt-3">
