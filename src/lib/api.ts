@@ -118,6 +118,8 @@ export interface Answer {
   disputed: string | null; misconceptionNote: string | null; practicalInfo: string | null;
   sources: string | null; status: string; aiGenerated: boolean; createdAt: string;
   helpfulUp: number; helpfulDown: number;
+  /** Phase 7: BOOK_PAGE citations with book slugs (present on detail + fresh drafts). */
+  citations?: import("@/lib/book-api").SourceCitation[] | null;
 }
 export interface ClaimRecord {
   id: string; claim: string; classification: string; explanation: string;
@@ -128,6 +130,12 @@ export interface ClaimRecord {
 export interface SearchHit {
   entityType: string; entityId: string; title: string; titleUr: string | null; titleAr: string | null;
   snippet: string; route: string; score: number;
+  /** Phase 5: present on BOOK_PAGE hits — full book provenance. */
+  provenance?: {
+    bookId: string; bookTitle: string; bookSlug: string; author: string | null;
+    volume: number | null; chapter: string | null; section: string | null;
+    page: number | null; pageId: string; docId: string; verified: boolean;
+  } | null;
 }
 
 // ─── Common Questions Library ───

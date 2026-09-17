@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { attachProvenance, scoreDocuments } from "@/lib/search-score";
+import { rerank } from "@/lib/semantic";
 
 /**
  * Search-intent classification (Common Questions Library spec):
@@ -15,48 +17,62 @@ export function classifyIntent(q: string): string {
   return "informational";
 }
 
+/**
+ * Unified search across the SearchDocument index — Phase 5.
+ * Ranking math lives in src/lib/search-score.ts (unit-tested); this handler
+ * keeps HTTP/DB/logging. Query params:
+ *   q (required) · type (entityType) · lang · surface
+ *   bookId — scopes BOOK_PAGE hits to one book (other families pass through)
+ *   volume — scopes BOOK_PAGE hits to one jild/volume (others pass through)
+ *   semantic=1 — opt-in TF-IDF cosine rerank (default ranking unchanged)
+ */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const q = (sp.get("q") ?? "").trim();
   const type = sp.get("type");
   const lang = sp.get("lang");
   const surface = sp.get("surface") ?? "search";
+  const bookId = sp.get("bookId");
+  const volumeRaw = sp.get("volume");
+  const semantic = sp.get("semantic") === "1";
+  const volume = volumeRaw !== null && volumeRaw !== "" ? Number(volumeRaw) : null;
 
   if (!q) {
     return NextResponse.json({ results: [], query: q, intent: null });
   }
+  if (volume !== null && (!Number.isInteger(volume) || volume < 1)) {
+    return NextResponse.json({ error: "volume must be a positive integer" }, { status: 400 });
+  }
 
   const intent = classifyIntent(q);
 
-  // Unified search across the SearchDocument index (keyword + multilingual)
-  const terms = q.toLowerCase().split(/\s+/).filter((t) => t.length > 1).slice(0, 10);
+  // Candidate fetch: type restricts all families; bookId/volume scope only
+  // BOOK_PAGE rows (other families have no book columns and pass through).
+  const where: Record<string, unknown> = {};
+  const and: Record<string, unknown>[] = [];
+  if (type) where.entityType = type;
+  if (bookId) {
+    and.push({ OR: [{ entityType: { not: "BOOK_PAGE" } }, { entityType: "BOOK_PAGE", bookId }] });
+  }
+  if (volume !== null) {
+    and.push({ OR: [{ entityType: { not: "BOOK_PAGE" } }, { entityType: "BOOK_PAGE", volume }] });
+  }
+  if (and.length > 0) where.AND = and;
 
   const candidates = await db.searchDocument.findMany({
-    ...(type ? { where: { entityType: type } } : {}),
+    where,
     take: 500,
     orderBy: { weight: "desc" },
   });
 
-  const scored = candidates
-    .map((d) => {
-      const title = `${d.title} ${d.titleUr ?? ""} ${d.titleAr ?? ""}`.toLowerCase();
-      const body = `${d.body} ${d.bodyUr ?? ""} ${d.bodyAr ?? ""}`.toLowerCase();
-      let score = 0;
-      for (const t of terms) {
-        if (title.includes(t)) score += 4;
-        else if (body.includes(t)) score += 2;
-      }
-      // Typo tolerance: prefix matching for longer terms
-      for (const t of terms) {
-        if (t.length > 4 && (title.startsWith(t.slice(0, t.length - 1)) || body.includes(t.slice(0, t.length - 1)))) {
-          score = Math.max(score, 1.5);
-        }
-      }
-      return { ...d, score };
-    })
-    .filter((d) => d.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 30);
+  let scored = scoreDocuments(candidates, q, {
+    type,
+    bookId,
+    volume,
+  });
+  if (semantic) {
+    scored = await rerank(scored.slice(0, 50), q).then((r) => r.slice(0, 30));
+  }
 
   // Language filter (multilingual search: searching "توسل" should find Tawassul)
   let results = scored;
@@ -65,12 +81,24 @@ export async function GET(req: NextRequest) {
     if (langFiltered.length > 0) results = langFiltered;
   }
 
+  // Book provenance for passage hits (two batched queries, any family size).
+  const withProv = await attachProvenance(results, async (pageIds) => {
+    const pages = await db.bookPage.findMany({
+      where: { id: { in: pageIds } },
+      select: {
+        id: true, volume: true, pageNumber: true, chapter: true, verified: true,
+        book: { select: { id: true, titleEn: true, slug: true, author: { select: { nameEn: true } } } },
+      },
+    });
+    return new Map(pages.map((p) => [p.id, p]));
+  });
+
   // Analytics log (fire-and-forget; no IP stored — aggregate signal only)
   db.searchLog
     .create({
       data: {
         query: q.slice(0, 300),
-        results: results.length,
+        results: withProv.length,
         intent,
         language: (lang ?? "EN").toUpperCase().slice(0, 2),
         surface: surface.slice(0, 20),
@@ -81,16 +109,17 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     query: q,
     intent,
-    count: results.length,
-    results: results.map((r) => ({
+    count: withProv.length,
+    results: withProv.map((r) => ({
       entityType: r.entityType,
       entityId: r.entityId,
       title: r.title,
       titleUr: r.titleUr,
       titleAr: r.titleAr,
-      snippet: r.body.slice(0, 220),
+      snippet: r.snippet,
       route: r.route,
       score: Math.round(r.score * 10) / 10,
+      provenance: r.provenance,
     })),
   });
 }

@@ -20,6 +20,9 @@ export function SearchView({ param }: { param?: string | null }) {
   const loc = useLoc();
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
+  const [bookId, setBookId] = useState("");
+  const [volume, setVolume] = useState("");
+  const [bookOptions, setBookOptions] = useState<{ id: string; titleEn: string }[]>([]);
   const [hits, setHits] = useState<SearchHit[] | null>(null);
   const [intent, setIntent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -40,18 +43,34 @@ export function SearchView({ param }: { param?: string | null }) {
     if (q.trim().length < 2) { setHits(null); return; }
     setLoading(true);
     try {
-      const data = await apiGet<{ results: SearchHit[]; intent: string | null }>(`/api/search?q=${encodeURIComponent(q.trim())}${type ? `&type=${type}` : ""}&surface=search`);
+      const sp = new URLSearchParams({ q: q.trim(), surface: "search" });
+      if (type) sp.set("type", type);
+      if (bookId) sp.set("bookId", bookId);
+      if (volume.trim() !== "") sp.set("volume", volume.trim());
+      const data = await apiGet<{ results: SearchHit[]; intent: string | null }>(`/api/search?${sp.toString()}`);
       setHits(data.results);
       setIntent(data.intent);
     } catch { setHits([]); } finally { setLoading(false); }
-  }, [q, type]);
+  }, [q, type, bookId, volume]);
 
   useEffect(() => {
     const id = setTimeout(run, 250);
     return () => clearTimeout(id);
   }, [run]);
 
+  // Book options for the resource filter (titles only — IDs go to the backend).
+  useEffect(() => {
+    apiGet<{ books: { id: string; titleEn: string }[] }>("/api/books")
+      .then((d) => setBookOptions(d.books.map((b) => ({ id: b.id, titleEn: b.titleEn }))))
+      .catch(() => setBookOptions([]));
+  }, []);
+
   function openHit(h: SearchHit) {
+    if (h.entityType === "BOOK_PAGE" && h.provenance) {
+      // Phase 7: passage → exact book + page in the existing viewer.
+      setView("sources", `book/${h.provenance.bookSlug}/${h.provenance.page ?? ""}`.replace(/\/$/, ""));
+      return;
+    }
     if (h.route.startsWith("misconceptions/")) setView("misconceptions", h.route.split("/")[1]);
     else if (h.route.startsWith("knowledge/")) setView("knowledge", h.route.split("/")[1]);
     else if (h.route.startsWith("bank/")) setView("bank", h.route.split("/")[1]);
@@ -69,6 +88,7 @@ export function SearchView({ param }: { param?: string | null }) {
     { v: "OBJECTION", label: t("objectionsLabel") }, { v: "BOOK", label: t("books") }, { v: "SCHOLAR", label: t("scholarsLabel") },
     { v: "HADITH", label: t("hadithCollection") }, { v: "QURAN", label: t("quran") }, { v: "FATWA", label: t("fatwas") },
     { v: "QUESTION", label: t("questions") }, { v: "COMPARISON", label: t("comparisonsLabel") },
+    { v: "BOOK_PAGE", label: t("bookPassages") },
   ];
 
   return (
@@ -106,6 +126,35 @@ export function SearchView({ param }: { param?: string | null }) {
         ))}
       </div>
 
+      {/* Resource filters — every control affects the backend request */}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="shrink-0">{t("books")}</span>
+          <select
+            value={bookId}
+            onChange={(e) => setBookId(e.target.value)}
+            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground"
+            aria-label={t("books")}
+          >
+            <option value="">{t("all")}</option>
+            {bookOptions.map((b) => (
+              <option key={b.id} value={b.id}>{b.titleEn}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="shrink-0">{t("bpJild") ?? "Jild"}</span>
+          <Input
+            value={volume}
+            onChange={(e) => setVolume(e.target.value.replace(/[^0-9]/g, ""))}
+            inputMode="numeric"
+            placeholder="4"
+            className="h-8 text-xs"
+            aria-label={t("bpJild") ?? "Jild"}
+          />
+        </label>
+      </div>
+
       <div className="mt-6">
         {loading && <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>}
         {!loading && hits && (
@@ -136,6 +185,16 @@ export function SearchView({ param }: { param?: string | null }) {
                         </div>
                       </div>
                       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{h.snippet}</p>
+                      {h.provenance && (
+                        <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-muted-foreground" dir="auto">
+                          <span className="font-medium text-emerald-700 dark:text-emerald-400">{h.provenance.bookTitle}</span>
+                          {h.provenance.author && <span>· {h.provenance.author}</span>}
+                          {h.provenance.volume !== null && <span>· vol. {h.provenance.volume}</span>}
+                          {h.provenance.page !== null && <span>· p. {h.provenance.page}</span>}
+                          {h.provenance.chapter && <span>· {h.provenance.chapter}</span>}
+                          {h.provenance.verified && <span className="text-emerald-600">· verified</span>}
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 );
