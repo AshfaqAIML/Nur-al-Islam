@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { normalizeSearchText } from "@/lib/search-normalize";
 
 /**
  * Hybrid retrieval for RAG: keyword search across the SearchDocument index
@@ -14,6 +15,12 @@ export interface RetrievedDoc {
   body: string;
   route: string;
   score: number;
+  /** Phase 5/6 passthrough: SearchDocument.id (stable chunk id for citations). */
+  id?: string;
+  /** Phase 6 passthrough: SearchDocument.meta JSON (section/surah/ayah cues). */
+  meta?: string | null;
+  /** Phase 6: BookPage.verified for BOOK_PAGE docs (null otherwise). */
+  verified?: boolean | null;
 }
 
 function tokenize(q: string): string[] {
@@ -28,6 +35,10 @@ function tokenize(q: string): string[] {
 export async function retrieveEvidence(query: string, limit = 10): Promise<RetrievedDoc[]> {
   const terms = tokenize(query);
   if (terms.length === 0) return [];
+  // Folded (normalized) terms match bodySearch: Urdu/Arabic spelling
+  // variants score without disturbing exact-match behavior below —
+  // documents without bodySearch (all pre-Phase-5 rows) score identically.
+  const foldedTerms = tokenize(normalizeSearchText(query));
 
   const docs = await db.searchDocument.findMany({
     take: 400,
@@ -37,10 +48,16 @@ export async function retrieveEvidence(query: string, limit = 10): Promise<Retri
   const scored: RetrievedDoc[] = [];
   for (const d of docs) {
     const hay = `${d.title} ${d.titleUr ?? ""} ${d.titleAr ?? ""} ${d.body}`.toLowerCase();
+    const searchIx = (d.bodySearch ?? "").toLowerCase();
     let score = 0;
     for (const t of terms) {
       if (d.title.toLowerCase().includes(t)) score += 3;
       if (hay.includes(t)) score += 1;
+    }
+    // Backstop only (elif): already-counted terms never double-score, so
+    // pre-Phase-5 rows (bodySearch NULL) keep byte-identical scores.
+    for (const t of foldedTerms) {
+      if (!hay.includes(t) && searchIx.includes(t)) score += 1;
     }
     if (score > 0) {
       scored.push({
@@ -50,6 +67,8 @@ export async function retrieveEvidence(query: string, limit = 10): Promise<Retri
         body: d.body.slice(0, 700),
         route: d.route,
         score: score * d.weight,
+        id: d.id,
+        meta: (d as { meta?: string | null }).meta ?? null,
       });
     }
   }
@@ -87,6 +106,25 @@ export async function retrieveEvidence(query: string, limit = 10): Promise<Retri
     } else if (doc.entityType === "TOPIC") {
       const t = await db.topic.findUnique({ where: { id: doc.entityId }, include: { category: true } });
       if (t) body = `TOPIC [${t.category.nameEn}${t.isContested ? ", contested" : ""}]: ${t.titleEn} — ${t.summaryEn ?? ""}`;
+    } else if (doc.entityType === "BOOK_PAGE") {
+      // Phase 4/6: page chunks carry display text in the doc body already;
+      // enrich with volume/page provenance + verification state for the AI
+      // prompt, and pass the verified flag through for citation labeling.
+      const p = await db.bookPage.findUnique({
+              where: { id: doc.entityId },
+              include: {
+                book: {
+                  select: {
+                    titleEn: true,
+                    slug: true,
+                    author: { select: { nameEn: true } },
+                  },
+                },
+              },
+            });
+      if (p) body = `BOOK EXCERPT [${p.verified ? "human-verified" : "OCR, unverified"}]: "${p.book.titleEn}" by ${p.book.author?.nameEn ?? "unknown author"}, vol. ${p.volume}, p. ${p.pageNumber}${p.chapter ? `, ${p.chapter}` : ""} — ${(p.verifiedText ?? p.ocrText ?? "").slice(0, 600)}`;
+      enriched.push({ ...doc, body, verified: p?.verified ?? null });
+      continue;
     }
     enriched.push({ ...doc, body });
   }

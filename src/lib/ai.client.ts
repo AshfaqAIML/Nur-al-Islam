@@ -22,6 +22,7 @@ export const SOURCE_TYPE_META: Record<string, { label: string; color: string }> 
   QURAN: { label: "Qur'an", color: "emerald" },
   HADITH: { label: "Hadith", color: "teal" },
   BOOK: { label: "Book", color: "amber" },
+  BOOK_PAGE: { label: "Book passage", color: "teal" },
   FATWA: { label: "Fatwa", color: "rose" },
   MISCONCEPTION: { label: "Misconception", color: "orange" },
   OBJECTION: { label: "Objection", color: "lime" },
