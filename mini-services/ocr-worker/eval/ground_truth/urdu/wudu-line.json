@@ -1,0 +1,13 @@
+{
+ "sample_id": "urdu/wudu-line",
+ "language": "ur",
+ "script": "arab",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "حنفی فقہ میں وضو کے فرائض چار ہیں",
+   "bbox": null
+  }
+ ]
+}

@@ -1,0 +1,13 @@
+{
+ "sample_id": "mixed/bab-mixed",
+ "language": "mixed",
+ "script": "mixed",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "باب الوضوء — The Chapter of Ablution",
+   "bbox": null
+  }
+ ]
+}

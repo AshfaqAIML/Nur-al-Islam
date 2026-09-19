@@ -1,0 +1,13 @@
+{
+ "sample_id": "headings/heading",
+ "language": "ur",
+ "script": "arab",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "باب الطہارۃ",
+   "bbox": null
+  }
+ ]
+}

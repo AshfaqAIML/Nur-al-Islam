@@ -1,0 +1,13 @@
+{
+ "sample_id": "arabic/basmala",
+ "language": "ar",
+ "script": "arab",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+   "bbox": null
+  }
+ ]
+}

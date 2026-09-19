@@ -1,0 +1,13 @@
+{
+ "sample_id": "arabic/tahara",
+ "language": "ar",
+ "script": "arab",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "كتاب الطهارة باب فرائض الوضوء",
+   "bbox": null
+  }
+ ]
+}

@@ -1,0 +1,13 @@
+{
+ "sample_id": "quran/ayah",
+ "language": "ar",
+ "script": "arab",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "ذَٰلِكَ الْكِتَابُ لَا رَيْبَ فِيهِ",
+   "bbox": null
+  }
+ ]
+}

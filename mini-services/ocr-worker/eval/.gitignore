@@ -1,0 +1,5 @@
+# Generated benchmark artifacts — never committed. Rerun: python -m eval.bench
+outputs/
+reports/
+__pycache__/
+.pytest_cache/

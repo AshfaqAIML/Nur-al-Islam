@@ -1,0 +1,13 @@
+{
+ "sample_id": "footnotes/footnote",
+ "language": "ur",
+ "script": "arab",
+ "source": "fixture",
+ "source_note": "rendered from authored FIXTURE_STRINGS in eval/make_fixtures.py",
+ "lines": [
+  {
+   "text": "حاشیہ: یہ چھوٹی وضاحت ہے",
+   "bbox": null
+  }
+ ]
+}
