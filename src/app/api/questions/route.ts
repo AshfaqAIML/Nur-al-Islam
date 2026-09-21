@@ -14,7 +14,12 @@ export async function GET(req: NextRequest) {
       where: { id },
       include: {
         category: true,
-        answers: { orderBy: { createdAt: "desc" } },
+        // Phase 7: citations with book slugs so the answer UI can deep-link
+        // each BOOK_PAGE citation into the existing source viewer.
+        answers: {
+          orderBy: { createdAt: "desc" },
+          include: { citations: { include: { book: { select: { slug: true, titleEn: true } } } } },
+        },
       },
     });
     if (!question) return NextResponse.json({ error: "Not found" }, { status: 404 });

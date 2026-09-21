@@ -13,9 +13,10 @@ import { apiGet, apiPost, Answer, parseJson, Question } from "@/lib/api";
 import { useDocTitle } from "@/lib/use-doc-title";
 import { ShareBar } from "@/components/platform/share-bar";
 import { BookmarkButton } from "@/components/platform/library";
-import { FiqhAqeedahBadge } from "@/components/platform/badges";
+import { FiqhAqeedahBadge, VerificationBadge } from "@/components/platform/badges";
 import { EvidenceList, ScholarlyCard } from "@/components/platform/text";
 import { EmptyState, NicheMarker } from "@/components/platform/architectural";
+import { buildBookPageParam } from "@/lib/book-api";
 import { getVote, setVote, AnswerVote } from "@/lib/answer-votes";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ export function QuestionsView({ id }: { id?: string | null }) {
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<StreamStage>("idle");
   const [streamText, setStreamText] = useState("");
+  const [streamError, setStreamError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
   useDocTitle(id ? (question?.text ?? null) : t("navQA"));
@@ -86,6 +88,7 @@ export function QuestionsView({ id }: { id?: string | null }) {
     if (!question || stage !== "idle") return;
     setStage("connecting");
     setStreamText("");
+    setStreamError(null);
     try {
       const res = await fetch("/api/answers/stream", {
         method: "POST",
@@ -128,7 +131,9 @@ export function QuestionsView({ id }: { id?: string | null }) {
       }
       if (streamError) throw new Error(streamError);
     } catch (e) {
-      toast({ title: e instanceof Error ? e.message : t("error"), variant: "destructive" });
+      const msg = e instanceof Error ? e.message : t("error");
+      setStreamError(msg);
+      toast({ title: msg, variant: "destructive" });
     } finally {
       setStage("idle");
       setStreamText("");
@@ -185,6 +190,21 @@ export function QuestionsView({ id }: { id?: string | null }) {
 
             {stage !== "idle" && (
               <LiveStreamPanel stage={stage} text={streamText} />
+            )}
+
+            {streamError && stage === "idle" && (
+              <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-900 dark:bg-amber-950/40">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-300">
+                  {t("bpAiUnavailable") ?? "Answer generation is currently unavailable"}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+                  {streamError} {t("bpAiUnavailableHint") ?? "Retrieval, search, and the source library keep working — only AI drafting is affected."}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" onClick={generateStream}>{t("retry") ?? "Retry"}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setView("search")}>{t("search")}</Button>
+                </div>
+              </div>
             )}
 
             {answers.length === 0 && !question.isSensitive && stage === "idle" && (
@@ -473,6 +493,49 @@ export function FeedbackRow({ answerId, up, down }: { answerId: string; up: numb
   );
 }
 
+/** Phase 7: structured book citations with real provenance + viewer links. */
+export function AnswerCitations({ citations }: { citations: NonNullable<Answer["citations"]> }) {
+  const t = useT();
+  const { setView } = usePlatform();
+  const bookCites = citations.filter((c) => c.sourceType === "BOOK_PAGE");
+  if (bookCites.length === 0) return null;
+  return (
+    <section aria-label={t("bpCitations") ?? "Book citations"}>
+      <h4 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{t("bpCitations") ?? "Book citations"}</h4>
+      <ul className="mt-1.5 space-y-2">
+        {bookCites.map((c) => {
+          const pageNum = c.page !== null ? Number(c.page) : null;
+          const target = c.book && (pageNum === null || Number.isNaN(pageNum))
+            ? `book/${c.book.slug}`
+            : c.book && pageNum !== null && !Number.isNaN(pageNum)
+              ? buildBookPageParam(c.book.slug, pageNum)
+              : null;
+          return (
+            <li key={c.id} className="rounded-lg border border-border/70 p-3">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <BookOpenCheck className="h-3.5 w-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden />
+                <span className="text-sm font-semibold" dir="auto">{c.book?.titleEn ?? c.sourceType}</span>
+                {c.volume !== null && <span className="text-[11px] tabular-nums text-muted-foreground">Jild {c.volume}</span>}
+                {c.page !== null && <span className="text-[11px] tabular-nums text-muted-foreground">p. {c.page}</span>}
+                {c.chapter && <span className="max-w-full truncate text-[11px] text-muted-foreground" dir="auto">{c.chapter}</span>}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <VerificationBadge status={c.verificationStatus} />
+                {c.quote && <span className="line-clamp-2 text-xs text-muted-foreground" dir="auto">“{c.quote}”</span>}
+              </div>
+              {target && (
+                <Button size="sm" variant="outline" className="mt-2 h-7 gap-1 px-2 text-[11px]" onClick={() => setView("sources", target)}>
+                  <Eye className="h-3 w-3" /> {t("bpOpenSource") ?? "Open source"}
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 export function AnswerCard({ answer, questionTitle }: { answer: Answer; questionTitle?: string }) {
   const t = useT();
   return (
@@ -577,6 +640,10 @@ export function AnswerCard({ answer, questionTitle }: { answer: Answer; question
               ))}
             </div>
           </section>
+        )}
+
+        {answer.citations && answer.citations.length > 0 && (
+          <AnswerCitations citations={answer.citations} />
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">

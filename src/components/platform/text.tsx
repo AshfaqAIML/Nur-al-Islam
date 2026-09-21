@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { parseJson } from "@/lib/api";
+import { VerificationBadge } from "@/components/platform/badges";
 
 /** Arabic text block — Amiri, RTL, generous line-height. */
 export function ArabicText({ text, className }: { text: string | null | undefined; className?: string }) {
@@ -24,8 +25,8 @@ export function UrduText({ text, className }: { text: string | null | undefined;
   );
 }
 
-/** Evidence item: {ref, quote, translation} */
-interface EvidenceItem { ref?: string; title?: string; book?: string; scholar?: string; quote?: string; translation?: string | null; note?: string; source?: string; collection?: string; number?: string; grading?: string; status?: string }
+/** Evidence item: {ref, quote, translation} + Phase 6/7 book fields {jild, page, verification, ref} */
+interface EvidenceItem { ref?: string; title?: string; book?: string; scholar?: string; quote?: string; translation?: string | null; note?: string; source?: string; collection?: string; number?: string; grading?: string; status?: string; jild?: number | null; page?: number | null; verification?: string | null }
 
 export function EvidenceList({ json, emptyLabel = "No evidence recorded yet — items are added as sources are verified." }: { json: string | null | undefined; emptyLabel?: string }) {
   const items = parseJson<EvidenceItem[]>(json, []);
@@ -44,7 +45,17 @@ export function EvidenceList({ json, emptyLabel = "No evidence recorded yet — 
             </span>
             {e.grading && <span className="text-[11px] uppercase tracking-wide text-muted-foreground">{e.grading}</span>}
             {e.status && <span className="text-[11px] text-amber-700 dark:text-amber-400">({e.status})</span>}
+            {(e.jild !== undefined && e.jild !== null) || (e.page !== undefined && e.page !== null) ? (
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {e.jild !== undefined && e.jild !== null ? `Jild ${e.jild}` : ""}
+                {e.jild !== undefined && e.jild !== null && e.page !== undefined && e.page !== null ? " · " : ""}
+                {e.page !== undefined && e.page !== null ? `p. ${e.page}` : ""}
+              </span>
+            ) : null}
           </div>
+          {e.verification && (
+            <div className="mt-1"><VerificationBadge status={e.verification} /></div>
+          )}
           {e.quote && <p className="text-sm mt-1 text-foreground/90">“{e.quote}”</p>}
           {e.translation && <p className="text-xs text-muted-foreground mt-0.5">{e.translation}</p>}
           {e.note && <p className="text-xs text-muted-foreground mt-0.5">{e.note}</p>}
