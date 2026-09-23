@@ -31,11 +31,7 @@ function model(entity: Entity) {
   }
 }
 
-function checkAdmin(req: NextRequest) {
-  // Simple shared-key gate (demo). NextAuth v4 integration documented in worklog.
-  const key = req.headers.get("x-admin-key");
-  return key === "nur-al-usul-admin";
-}
+import { checkAdmin } from "@/lib/admin-auth";
 
 /** QuranVerse has no createdAt — order the verse library by surah/ayah instead. */
 const ORDER_BY: Partial<Record<Entity, Record<string, string>>> = {
@@ -125,6 +121,20 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Invalid entity" }, { status: 400 });
     }
     const m = model(entity as Entity);
+    // Books cascade to pages+jobs via FK, but SearchDocuments are keyed
+    // loosely (entityId/bookId) — delete them explicitly so no stale search
+    // hits survive the book. Chunked for large books.
+    if (entity === "book") {
+      await db.searchDocument.deleteMany({ where: { bookId: id } });
+      const pageIds = (
+        await db.bookPage.findMany({ where: { bookId: id }, select: { id: true } })
+      ).map((p) => p.id);
+      for (let i = 0; i < pageIds.length; i += 500) {
+        await db.searchDocument.deleteMany({
+          where: { entityType: "BOOK_PAGE", entityId: { in: pageIds.slice(i, i + 500) } },
+        });
+      }
+    }
     await (m as unknown as { delete: (a: unknown) => unknown }).delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
